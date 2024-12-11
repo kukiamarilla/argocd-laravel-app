@@ -1,26 +1,23 @@
 # Etapa 1: Construcción del Frontend
 FROM node:20 AS frontend-builder
 
-# Establece el directorio de trabajo
 WORKDIR /app
 
-# Copia solo los archivos relacionados con el frontend
 COPY package*.json ./
 COPY resources/js ./resources/js
 COPY resources/css ./resources/css
 COPY vite.config.js ./
 
-# Instala dependencias y construye el frontend
-RUN npm install && npm run build
+RUN npm ci && npm run build
 
-# Etapa 2: Construcción de la aplicación Laravel con PHP-FPM
+# Etapa 2: Laravel con PHP-FPM y Nginx
 FROM php:8.2-fpm
 
-# Establece el directorio de trabajo dentro del contenedor
 WORKDIR /var/www
 
-# Instala extensiones y dependencias necesarias
+# Instala las dependencias necesarias
 RUN apt-get update && apt-get install -y \
+    nginx \
     libicu-dev \
     libonig-dev \
     libzip-dev \
@@ -39,21 +36,24 @@ RUN apt-get update && apt-get install -y \
 # Instala Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Copia los archivos del frontend generados en la primera etapa
-COPY --from=frontend-builder /app/dist /var/www/public
+# Copia los archivos del frontend
+COPY --from=frontend-builder /app/public/build /var/www/public/build
 
-# Copia los archivos de la aplicación Laravel al contenedor
+# Copia los archivos de Laravel
 COPY . /var/www
 
-# Instala dependencias de Laravel
+# Instala las dependencias de Laravel
 RUN composer install --optimize-autoloader --no-dev
 
-# Configura permisos para las carpetas de almacenamiento y caché
+# Configura permisos
 RUN chown -R www-data:www-data /var/www \
     && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
-# Exponer el puerto 9000 para PHP-FPM
-EXPOSE 9000
+# Copia la configuración de Nginx
+COPY ./nginx.conf /etc/nginx/sites-available/default
 
-# Inicia el servidor PHP-FPM
-CMD ["php-fpm"]
+# Exponer puerto 80
+EXPOSE 80
+
+# Configura un script de entrada para iniciar PHP-FPM y Nginx
+CMD ["sh", "-c", "php-fpm -D && nginx -g 'daemon off;'"]
