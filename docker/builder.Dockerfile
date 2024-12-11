@@ -6,3 +6,5 @@ COPY package*.json ./
 COPY resources/js ./resources/js
 COPY resources/css ./resources/css
 COPY vite.config.js ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
