@@ -1,0 +1,103 @@
+name: Workflow
+
+on:
+  push:
+    tags:
+      - 'v*' 
+
+jobs:
+  test:
+    needs: test
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: 8.3
+        extensions: mbstring, pdo, pdo_mysql, tokenizer
+        coverage: none
+
+    - name: Install Composer dependencies
+      run: composer install --no-progress --no-suggest --prefer-dist --optimize-autoloader
+
+    - name: Create .env file
+      run: |
+        cp .env.example .env
+        php artisan key:generate
+
+    - name: Cache configuration
+      run: |
+        php artisan config:cache
+        php artisan route:cache
+
+    - name: Run migrations
+      run: php artisan migrate --force
+
+    - name: Run tests
+      run: vendor/bin/pest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Extract Version from Tag
+      id: extract_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to DigitalOcean Container Registry
+      run: echo "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" | docker login registry.digitalocean.com -u do --password-stdin
+
+    - name: Build and Push App Image
+      run: |
+        docker build -f docker/app.Dockerfile -t registry.digitalocean.com/kukiamarilla-registry/argocd-laravel-app:${{ env.VERSION }} .
+        docker push registry.digitalocean.com/kukiamarilla-registry/argocd-laravel-app:${{ env.VERSION }}
+
+    - name: Build and Push Builder Image
+      run: |
+        docker build -f docker/builder.Dockerfile -t registry.digitalocean.com/kukiamarilla-registry/argocd-laravel-app:builder-${{ env.VERSION }} .
+        docker push registry.digitalocean.com/kukiamarilla-registry/argocd-laravel-app:builder-${{ env.VERSION }}
+
+    - name: Checkout Helm Config Repository
+      uses: actions/checkout@v3
+      with:
+        repository: kukiamarilla/argocd-laravel-app-config
+        token: ${{ secrets.REPO_ACCESS_TOKEN }}
+        path: helm-config
+
+    - name: Update image.tag in values.yaml
+      run: |
+        sed -i "s|image:\s\+tag:.*|image:\n  tag: ${VERSION}|" helm-config/values.yaml
+
+    - name: Commit and Push Changes
+      run: |
+        cd helm-config
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add values.yaml
+        git commit -m "Update image.tag to ${{ env.VERSION }}"
+        git push origin main
