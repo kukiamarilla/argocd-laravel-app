@@ -54,6 +54,7 @@ jobs:
       run: vendor/bin/pest
 
   build:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
