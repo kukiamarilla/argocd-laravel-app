@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v3
+      with:
+        php-version: 8.2
+        extensions: mbstring, pdo, pdo_mysql, tokenizer
+        coverage: none
+
+    - name: Install Composer dependencies
+      run: composer install --no-progress --no-suggest --prefer-dist --optimize-autoloader
+
+    - name: Create .env file
+      run: |
+        cp .env.example .env
+        php artisan key:generate
+
+    - name: Cache configuration
+      run: |
+        php artisan config:cache
+        php artisan route:cache
+
+    - name: Run migrations
+      run: php artisan migrate --force
+
+    - name: Run tests
+      run: vendor/bin/pest
