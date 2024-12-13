@@ -123,9 +123,7 @@ jobs:
 
     - name: Update image.tag in values.yaml
       run: |
-        cat values.yaml
         sed -i "s|tag:.*|tag: ${VERSION}|" values.yaml 
-        cat values.yaml
 
     - name: Commit and Push Changes
       run: |
