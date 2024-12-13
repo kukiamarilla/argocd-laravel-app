@@ -110,7 +110,7 @@ jobs:
       with:
         repository: kukiamarilla/argocd-laravel-app-config
         token: ${{ secrets.REPO_ACCESS_TOKEN }}
-        path: helm-config
+        ref: main
 
     - name: Update image.tag in values.yaml
       run: |
