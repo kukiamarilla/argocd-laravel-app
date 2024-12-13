@@ -73,7 +73,7 @@ jobs:
     - name: Build project
       run: npm run build
 
-  deploy:
+  push:
     needs: build
     runs-on: ubuntu-latest
 
@@ -104,7 +104,16 @@ jobs:
       run: |
         docker build -f docker/builder.Dockerfile -t registry.digitalocean.com/kukiamarilla-registry/argocd-laravel-app:builder-${{ env.VERSION }} .
         docker push registry.digitalocean.com/kukiamarilla-registry/argocd-laravel-app:builder-${{ env.VERSION }}
+  
+  deploy:
+    needs: push
+    runs-on: ubuntu-latest
 
+    steps:
+    - name: Extract Version from Tag
+      id: extract_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      
     - name: Checkout Helm Config Repository
       uses: actions/checkout@v3
       with:
@@ -114,7 +123,7 @@ jobs:
 
     - name: Update image.tag in values.yaml
       run: |
-        sed -i "s|image:\s\+tag:.*|image:\n  tag: ${VERSION}|" helm-config/values.yaml
+        sed -i "s|image:\s\+tag:.*|image:\n  tag: ${VERSION}|" values.yaml
 
     - name: Commit and Push Changes
       run: |
